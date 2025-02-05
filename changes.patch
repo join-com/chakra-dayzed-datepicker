@@ -1,0 +1,195 @@
+diff --git a/src/components/calendarPanel.tsx b/src/components/calendarPanel.tsx
+index c360d49..7b287ea 100644
+--- a/src/components/calendarPanel.tsx
++++ b/src/components/calendarPanel.tsx
+@@ -20,6 +20,8 @@ export interface CalendarPanelProps extends DatepickerProps {
+   disabledDates?: Set<number>;
+   onMouseEnterHighlight?: (date: Date) => void;
+   isInRange?: (date: Date) => boolean | null;
++  isFirstSelectedDate?: (date: Date) => boolean | null;
++  isLastSelectedDate?: (date: Date) => boolean | null;
+ }
+ 
+ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
+@@ -29,6 +31,8 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
+   disabledDates,
+   onMouseEnterHighlight,
+   isInRange,
++  isFirstSelectedDate,
++  isLastSelectedDate
+ }) => {
+   const renderProps = useDayzed(dayzedHookProps);
+   const { calendars, getBackProps, getForwardProps } = renderProps;
+@@ -136,6 +140,7 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
+                 return week.map((dateObj, index) => {
+                   const key = `${calendar.month}-${calendar.year}-${weekIdx}-${index}`;
+                   if (!dateObj) return <Box key={key} />;
++                  
+                   const { date } = dateObj;
+                   return (
+                     <DayOfMonth
+@@ -143,6 +148,8 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
+                       dateObj={dateObj}
+                       propsConfigs={propsConfigs}
+                       renderProps={renderProps}
++                      isFirstSelectedDate={isFirstSelectedDate && isFirstSelectedDate(date)}
++                      isLastSelectedDate={isLastSelectedDate && isLastSelectedDate(date)}
+                       isInRange={isInRange && isInRange(date)}
+                       disabledDates={disabledDates}
+                       onMouseEnter={() => {
+diff --git a/src/components/dateNavBtns.tsx b/src/components/dateNavBtns.tsx
+index f49be6b..a226a46 100644
+--- a/src/components/dateNavBtns.tsx
++++ b/src/components/dateNavBtns.tsx
+@@ -18,6 +18,8 @@ export const DatepickerBackBtns: React.FC<DatepickerBackBtnsProps> = (
+ ) => {
+   const { calendars, getBackProps } = props;
+   const customBtnProps = props.propsConfigs?.dateNavBtnProps;
++  const customBtnBackwardProps = props.propsConfigs?.dateNavBackwardBtnProps;
++
+   return (
+     <Fragment>
+       <Button
+@@ -27,16 +29,12 @@ export const DatepickerBackBtns: React.FC<DatepickerBackBtnsProps> = (
+         })}
+         {...DefaultBtnStyle}
+         {...customBtnProps}
+-      >
+-        {'<<'}
+-      </Button>
++      />
+       <Button
+         {...getBackProps({ calendars })}
+         {...DefaultBtnStyle}
+-        {...customBtnProps}
+-      >
+-        {'<'}
+-      </Button>
++        {...customBtnBackwardProps}
++      />
+     </Fragment>
+   );
+ };
+@@ -51,15 +49,15 @@ export const DatepickerForwardBtns: React.FC<DatepickerForwardBtnsProps> = (
+ ) => {
+   const { calendars, getForwardProps } = props;
+   const customBtnProps = props.propsConfigs?.dateNavBtnProps;
++  const customBtnBackwardProps = props.propsConfigs?.dateNavBackwardBtnProps;
++
+   return (
+     <Fragment>
+       <Button
+         {...getForwardProps({ calendars })}
+         {...DefaultBtnStyle}
+-        {...customBtnProps}
+-      >
+-        {'>'}
+-      </Button>
++        {...customBtnBackwardProps}
++      />
+       <Button
+         {...getForwardProps({
+           calendars,
+@@ -67,9 +65,7 @@ export const DatepickerForwardBtns: React.FC<DatepickerForwardBtnsProps> = (
+         })}
+         {...DefaultBtnStyle}
+         {...customBtnProps}
+-      >
+-        {'>>'}
+-      </Button>
++      />
+     </Fragment>
+   );
+ };
+diff --git a/src/components/dayOfMonth.tsx b/src/components/dayOfMonth.tsx
+index a0659ca..48021b0 100644
+--- a/src/components/dayOfMonth.tsx
++++ b/src/components/dayOfMonth.tsx
+@@ -6,6 +6,8 @@ import { DatepickerProps, DayOfMonthBtnStyleProps } from '../utils/commonTypes';
+ interface DayOfMonthProps extends DatepickerProps {
+   renderProps: RenderProps;
+   isInRange?: boolean | null;
++  isFirstSelectedDate?: boolean | null;
++  isLastSelectedDate?: boolean | null;
+   disabledDates?: Set<number>;
+   dateObj: DateObj;
+   onMouseEnter?: React.MouseEventHandler<HTMLButtonElement> | undefined;
+@@ -24,8 +26,14 @@ export const DayOfMonth: React.FC<DayOfMonthProps> = ({
+   disabledDates,
+   renderProps,
+   onMouseEnter,
++  isFirstSelectedDate,
++  isLastSelectedDate
+ }) => {
+   const { date, selected, selectable, today } = dateObj;
++  const rangeClassName = isInRange && !(isLastSelectedDate || isFirstSelectedDate)  ? 'is-in-range-calendar-button' : '';
++  const lastSelectedClassName= isLastSelectedDate ? 'is-last-selected-calendar-button' : '';
++  const firstSelectedClassName= isFirstSelectedDate ? 'is-first-selected-calendar-button' : '';
++  const todayButtonClassName= today ? 'is-today-calendar-button' : '';
+   const { getDateProps } = renderProps;
+   const {
+     defaultBtnProps,
+@@ -81,6 +89,7 @@ export const DayOfMonth: React.FC<DayOfMonthProps> = ({
+ 
+   return (
+     <Button
++      className={`${rangeClassName} ${todayButtonClassName} ${lastSelectedClassName} ${firstSelectedClassName}`}
+       {...getDateProps({
+         dateObj,
+         disabled: disabled,
+diff --git a/src/range.tsx b/src/range.tsx
+index af6dd72..f9a0d44 100644
+--- a/src/range.tsx
++++ b/src/range.tsx
+@@ -71,6 +71,30 @@ export const RangeCalendarPanel: React.FC<RangeCalendarPanelProps> = ({
+     }
+   };
+ 
++  const isFirstSelectedDate = (date: Date): boolean => {
++    if (!Array.isArray(selected) || selected.length === 0) {
++      return false;
++    }
++
++    if (selected.length === 1) {
++      return hoveredDate ? selected[0].getTime() < hoveredDate.getTime() : false;
++    }
++
++    return selected.length > 0 && selected[0].getTime() === date.getTime();
++  };
++
++const isLastSelectedDate = (date: Date): boolean => {
++  if (!Array.isArray(selected) || selected.length === 0) {
++    return false;
++  }
++
++  if (selected.length === 1) {
++    return hoveredDate ? selected[0].getTime() > hoveredDate.getTime() : false;
++  }
++
++  return selected[selected.length - 1].getTime() === date.getTime();
++};
++
+   return (
+     <Flex onMouseLeave={onMouseLeave}>
+       <CalendarPanel
+@@ -79,6 +103,8 @@ export const RangeCalendarPanel: React.FC<RangeCalendarPanelProps> = ({
+         propsConfigs={propsConfigs}
+         isInRange={isInRange}
+         onMouseEnterHighlight={onMouseEnterHighlight}
++        isFirstSelectedDate={isFirstSelectedDate}
++        isLastSelectedDate={isLastSelectedDate}
+       />
+     </Flex>
+   );
+diff --git a/src/utils/commonTypes.ts b/src/utils/commonTypes.ts
+index 02acded..2bb7eaf 100644
+--- a/src/utils/commonTypes.ts
++++ b/src/utils/commonTypes.ts
+@@ -44,6 +44,7 @@ export interface CalendarPanelProps {
+ 
+ export interface PropsConfigs {
+   dateNavBtnProps?: ButtonProps;
++  dateNavBackwardBtnProps?: ButtonProps;
+   dayOfMonthBtnProps?: DayOfMonthBtnStyleProps;
+   inputProps?: InputProps;
+   triggerBtnProps?: ButtonProps;
